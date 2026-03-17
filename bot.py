@@ -18,7 +18,7 @@ print("🔍 STOCK ANALYSIS BOT - FINAL WORKING VERSION")
 print("=" * 50)
 
 # ========== YOUR TOKEN ==========
-TOKEN = "PASTE_YOUR_TOKEN_HERE"
+TOKEN = "8362825548:AAHzzPBDtOmW8ou7GHz1zLK1_Ymg4RTbYgs"
 
 # ========== BUILD BOT ==========
 app = ApplicationBuilder().token(TOKEN).build()
