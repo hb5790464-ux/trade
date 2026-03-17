@@ -1,31 +1,35 @@
-import os
 import logging
 import sys
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import requests
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from telegram import Update
 
 # ========== DEBUG SETUP ==========
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 
 print("=" * 50)
-print("🔍 STOCK ANALYSIS BOT - FINAL WORKING VERSION")
+print("🔍 STOCK ANALYSIS BOT - FINAL VERSION")
 print("=" * 50)
 
 # ========== YOUR TOKEN ==========
-TOKEN = "8362825548:AAHzzPBDtOmW8ou7GHz1zLK1_Ymg4RTbYgs"
+TOKEN = "8362825548:AAHzzPBDtOmW8ou7GHz1zLK1_Ymg4RTbYgs"  # <-- ADD TOKEN
 
 # ========== BUILD BOT ==========
 app = ApplicationBuilder().token(TOKEN).build()
 
 # ========== ANALYZE FUNCTION ==========
 async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print(f"\n{'='*40}")
+    print(f"📩 /analyze received")
+    print(f"{'='*40}")
+    
     try:
         if not context.args:
             await update.message.reply_text(
@@ -36,37 +40,67 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stock_input = context.args[0].upper()
         stock_nse = stock_input if stock_input.endswith(".NS") else stock_input + ".NS"
 
+        print(f"🔍 Stock: {stock_nse}")
         await update.message.reply_text(f"🔄 Analyzing {stock_input}... Please wait")
 
-        # 🔥 Robust data fetch (Railway fix)
-        data = None
+        # ===============================
+        # 🔥 METHOD 1: Yahoo API (Primary)
+        # ===============================
+        close_series = None
+        volume_series = None
 
         try:
-            data = yf.download(stock_nse, period="5d", interval="1d", progress=False)
-        except:
-            pass
+            print("📡 Fetching from Yahoo API...")
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock_nse}?range=5d&interval=1d"
+            headers = {"User-Agent": "Mozilla/5.0"}
 
-        if data is None or data.empty:
+            res = requests.get(url, headers=headers, timeout=10)
+            json_data = res.json()
+
+            result = json_data['chart']['result'][0]
+            closes = result['indicators']['quote'][0]['close']
+            volumes = result['indicators']['quote'][0]['volume']
+
+            close_series = pd.Series(closes).dropna()
+            volume_series = pd.Series(volumes).dropna()
+
+            print(f"✅ Yahoo API success: {len(close_series)} days")
+
+        except Exception as e:
+            print(f"⚠️ Yahoo API failed: {e}")
+
+        # ===============================
+        # 🔁 METHOD 2: yfinance fallback
+        # ===============================
+        if close_series is None or close_series.empty:
             try:
-                data = yf.download(stock_nse, period="1mo", interval="1d", progress=False)
-            except:
-                pass
+                print("🔄 Trying yfinance fallback...")
+                data = yf.download(stock_nse, period="5d", interval="1d", progress=False, threads=False)
 
-        if data is None or data.empty:
+                if not data.empty:
+                    close_series = data['Close']
+                    volume_series = data['Volume']
+                    print("✅ yfinance success")
+
+            except Exception as e:
+                print(f"❌ yfinance failed: {e}")
+
+        # Final check
+        if close_series is None or close_series.empty:
             await update.message.reply_text(f"❌ No data found for {stock_input}")
             return
 
-        # Extract data
-        close_series = data['Close']
-        volume_series = data['Volume']
-
+        # ===============================
+        # 📊 PROCESS DATA
+        # ===============================
         latest_close = float(close_series.iloc[-1])
         latest_volume = int(volume_series.iloc[-1])
 
-        # Indicators
+        # EMA
         ema20 = close_series.ewm(span=20, adjust=False).mean().iloc[-1]
         ema50 = close_series.ewm(span=50, adjust=False).mean().iloc[-1]
 
+        # RSI
         delta = close_series.diff()
         gain = delta.where(delta > 0, 0).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -102,7 +136,9 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             volume_signal = "📊 NORMAL"
 
-        # Message
+        # ===============================
+        # 📤 RESPONSE
+        # ===============================
         msg = f"""
 📊 *{stock_input} STOCK ANALYSIS*
 
@@ -130,10 +166,11 @@ _{volume_signal}_
 """
 
         await update.message.reply_text(msg, parse_mode='Markdown')
+        print("✅ Response sent!")
 
     except Exception as e:
         print(f"❌ Error: {e}")
-        await update.message.reply_text("❌ Error occurred")
+        await update.message.reply_text("❌ Something went wrong")
 
 # ========== START ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
