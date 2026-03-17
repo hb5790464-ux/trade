@@ -1,0 +1,12 @@
+# render.yaml
+services:
+  - type: worker
+    name: tradindbot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python Bot.py
+    envVars:
+      - key: BOT_TOKEN
+        value: dummy_value  # Render dashboard se set karna hoga
+      - key: PYTHON_VERSION
+        value: 3.11.0
