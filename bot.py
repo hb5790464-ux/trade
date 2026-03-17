@@ -43,14 +43,11 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"🔍 Stock: {stock_nse}")
         await update.message.reply_text(f"🔄 Analyzing {stock_input}... Please wait")
 
-        # ===============================
-        # 🔥 METHOD 1: Yahoo API (Primary)
-        # ===============================
+        # ===== Yahoo API =====
         close_series = None
         volume_series = None
 
         try:
-            print("📡 Fetching from Yahoo API...")
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{stock_nse}?range=5d&interval=1d"
             headers = {"User-Agent": "Mozilla/5.0"}
 
@@ -64,43 +61,27 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
             close_series = pd.Series(closes).dropna()
             volume_series = pd.Series(volumes).dropna()
 
-            print(f"✅ Yahoo API success: {len(close_series)} days")
+        except:
+            pass
 
-        except Exception as e:
-            print(f"⚠️ Yahoo API failed: {e}")
-
-        # ===============================
-        # 🔁 METHOD 2: yfinance fallback
-        # ===============================
+        # ===== yfinance fallback =====
         if close_series is None or close_series.empty:
-            try:
-                print("🔄 Trying yfinance fallback...")
-                data = yf.download(stock_nse, period="5d", interval="1d", progress=False, threads=False)
+            data = yf.download(stock_nse, period="5d", interval="1d", progress=False, threads=False)
+            if not data.empty:
+                close_series = data['Close']
+                volume_series = data['Volume']
 
-                if not data.empty:
-                    close_series = data['Close']
-                    volume_series = data['Volume']
-                    print("✅ yfinance success")
-
-            except Exception as e:
-                print(f"❌ yfinance failed: {e}")
-
-        # Final check
         if close_series is None or close_series.empty:
             await update.message.reply_text(f"❌ No data found for {stock_input}")
             return
 
-        # ===============================
-        # 📊 PROCESS DATA
-        # ===============================
+        # ===== PROCESS =====
         latest_close = float(close_series.iloc[-1])
         latest_volume = int(volume_series.iloc[-1])
 
-        # EMA
         ema20 = close_series.ewm(span=20, adjust=False).mean().iloc[-1]
         ema50 = close_series.ewm(span=50, adjust=False).mean().iloc[-1]
 
-        # RSI
         delta = close_series.diff()
         gain = delta.where(delta > 0, 0).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
@@ -108,15 +89,12 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rsi_series = 100 - (100 / (1 + rs))
         latest_rsi = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50
 
-        # Trend
         trend = "Bullish 📈" if ema20 > ema50 else "Bearish 📉"
 
-        # Levels
         buy_above = round(latest_close * 1.01, 2)
         stop_loss = round(latest_close * 0.97, 2)
         target = round(latest_close * 1.05, 2)
 
-        # RSI signal
         if latest_rsi < 30:
             rsi_signal = "🟢 OVERSOLD - Buy"
             rsi_emoji = "🟢"
@@ -127,7 +105,6 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rsi_signal = "⚪ NEUTRAL"
             rsi_emoji = "⚪"
 
-        # Volume
         avg_volume = volume_series.rolling(window=20).mean().iloc[-1]
         if latest_volume > avg_volume * 1.5:
             volume_signal = "🔥 HIGH VOLUME"
@@ -136,9 +113,6 @@ async def analyze(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             volume_signal = "📊 NORMAL"
 
-        # ===============================
-        # 📤 RESPONSE
-        # ===============================
         msg = f"""
 📊 *{stock_input} STOCK ANALYSIS*
 
@@ -166,18 +140,48 @@ _{volume_signal}_
 """
 
         await update.message.reply_text(msg, parse_mode='Markdown')
-        print("✅ Response sent!")
 
     except Exception as e:
         print(f"❌ Error: {e}")
         await update.message.reply_text("❌ Something went wrong")
 
-# ========== START ==========
+# ========== STYLISH START ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🚀 *Stock Bot Ready*\n\nUse:\n/analyze RELIANCE",
-        parse_mode='Markdown'
-    )
+    welcome_msg = """
+🚀 *STOCK ANALYSIS BOT* 📊
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🇮🇳 *Indian Stock Analyzer*
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 I analyze stocks using:
+• 📊 RSI (Momentum)
+• 📈 EMA Trend
+• 📦 Volume Strength
+• 🎯 Buy/Sell Levels
+
+━━━━━━━━━━━━━━━━━━━━━━━
+⚡ *COMMANDS*
+━━━━━━━━━━━━━━━━━━━━━━━
+
+🔹 `/analyze RELIANCE`  
+🔹 `/analyze TCS`  
+🔹 `/analyze INFY`  
+
+━━━━━━━━━━━━━━━━━━━━━━━
+💡 *HOW IT WORKS*
+━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣ Enter stock name  
+2️⃣ Get instant analysis  
+3️⃣ Trade smarter 📈  
+
+━━━━━━━━━━━━━━━━━━━━━━━
+🚀 *TRY NOW:*
+👉 `/analyze RELIANCE`
+━━━━━━━━━━━━━━━━━━━━━━━
+"""
+    await update.message.reply_text(welcome_msg, parse_mode='Markdown')
 
 # ========== HANDLERS ==========
 app.add_handler(CommandHandler("analyze", analyze))
